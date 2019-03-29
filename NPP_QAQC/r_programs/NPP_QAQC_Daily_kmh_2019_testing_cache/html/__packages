@@ -1,0 +1,16 @@
+base
+ggplot2
+lubridate
+plyr
+reshape2
+knitr
+markdown
+tidyr
+tidyverse
+tibble
+readr
+purrr
+dplyr
+stringr
+forcats
+readxl

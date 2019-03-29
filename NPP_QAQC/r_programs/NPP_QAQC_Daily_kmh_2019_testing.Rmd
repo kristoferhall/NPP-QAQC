@@ -1,0 +1,624 @@
+---
+title: "NPP_QAQC_Daily"
+author: "AJ - KMH"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Sevilleta NPP quality control - Daily data
+Date of report:
+```{r, echo=FALSE, warning=FALSE}
+# REPORT DATE:
+Sys.time()
+```
+
+Report produced on: `r format(Sys.Date(), "%b %d, %Y")`  
+The working directory is: `r getwd()`
+
+```{r, echo = FALSE}
+# Purpose of this script: This script reads in daily raw excel files from NPP quad observations in the field and outputs one filled, merged, and amended daily file, as well as a report on possible errors within that daily file. In addition to the raw observation files, it utilizes a file of all previous NPP observations made at the Sevilleta.  
+```
+
+```{r load libraries convert files specify directories, message=F, warning=F, echo=F}
+# !!!INITIAL STEPS FOR USER: Make sure libraries are up to date, and that directory paths are correctly set.  I place "USER" in locations where the user may need to update information.
+
+# This initial code will not appear in the report output.  
+
+# USER: Update libary packages as needed.
+# Load R packages that will be used
+# This list is long because Alesia is lazy 
+library(ggplot2)
+library(lubridate)
+library(plyr)
+library(reshape2)
+#library(gridExtra)
+#library(cowplot)
+library(knitr)
+library(kableExtra)
+library(markdown)
+#library(xtable)
+#library(zoo)
+library(tidyr)
+#library(stats)
+library(tidyverse)
+library(readxl)
+
+# Convert the daily .xlsx files to .csv files - you may need to change the directory paths
+# USER: Where are the daily xlsx files are located? Enter directory path to files.
+location_xlsx.data.sheets <- 
+  # list.files("C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_daily/xlsx_format")
+  # list.files("/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_daily/xlsx_format")
+  list.files("../data/data_daily/xlsx_format")
+
+for(i in location_xlsx.data.sheets) {
+  file.list <- lapply(location_xlsx.data.sheets, function(x) gsub(".xlsx", "", x))
+}
+
+
+for(i in file.list){
+# filepath <- file.path("C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_daily/xlsx_format",paste(i,".xlsx",sep=""))
+# filepath <- file.path("/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_daily/xlsx_format",paste(i,".xlsx",sep=""))
+  filepath <- file.path("../data/data_daily/xlsx_format",paste(i,".xlsx",sep=""))
+
+  assign(i, read_xlsx(filepath))
+}
+
+# USER: Enter the directory path where the daily csv formatted files will be written.
+for(i in ls(pattern = "npp")) {
+   # write.csv(get(i), paste("C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_daily/csv_format/", i, ".csv", sep = ""), row.names = FALSE)
+     # write.csv(get(i), paste("/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_daily/csv_format/", i, ".csv", sep = ""), row.names = FALSE)
+     write.csv(get(i), paste("../data/data_daily/csv_format/", i, ".csv", sep = ""), row.names = FALSE)
+
+}
+
+rm(list=ls(all=TRUE))
+
+
+
+# USER: Where are the daily raw csv data files stored? Enter directory path to files.
+# location_raw.data.sheets <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_daily/csv_format"
+location_raw.data.sheets <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_daily/csv_format"
+
+# USER: Where is the large, all-quad data file stored? Enter directory path to file.
+# all.quad.file <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_other/AJ_AllQuads.csv"
+all.quad.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_other/AJ_AllQuads.csv"
+
+# USER: Where is the master species list stored? Enter directory path to files.
+# master.species.list.file <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_other/SevilletaSpeciesList_AJH.csv"
+master.species.list.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_other/SevilletaSpeciesList_AJH.csv"
+
+# USER: Where will you write the combined daily output file to?  Enter directory path.
+# daily.output.file <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/output/output_daily/"
+daily.output.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/output/output_daily/"
+
+```
+
+
+
+
+```{r read in raw files, echo = F}
+# An important step is to read in all of the raw daily csv files, merge them together, and fill in blank site, plot, or quad columns
+# In the field, data collectors don't manually fill in every row in the file, because this is a waste of time. This loop reads through each row of the data file and, if cells within the site, plot, or quad columns are empty, fills that cell with information from the previous cell. 
+
+
+# Read in raw data files (CSV format)
+raw.data.sheets <- list.files(location_raw.data.sheets, pattern = glob2rx("npp*csv"), full.names = T)
+
+# Define legal column names
+legal.col.names <- c("site", "treatment", "quad", "kartez", "obs", "cover", "height", "count", "comments", "field.sheet.name", "collection.date", "collector", "web", "plot", "subplot", "transect", "field_comments", "qaqc_comments")
+
+for (i in 1:length(raw.data.sheets)) {
+  raw.data.file <- read.csv(raw.data.sheets[i], header = T, strip.white = T, na.strings = c("NA", ""))
+  # Delete unnamed columns
+  if ("x" %in% colnames(raw.data.file)) {
+    raw.data.file <- subset(raw.data.file, select = -x) }
+  if ("X" %in% colnames(raw.data.file)) {
+    raw.data.file <- subset(raw.data.file, select = -X) }
+  
+  # extract file name info
+  raw.data.file$field.sheet.name <- as.factor(list.files(location_raw.data.sheets, pattern=glob2rx("npp*csv"))[i])
+  field.file.name <- strsplit(list.files(location_raw.data.sheets, pattern = glob2rx("npp*csv"))[i], split = "[.]")[[1]]
+  
+  # make column names lowercase and check if they are legal
+  colnames(raw.data.file) <- tolower(colnames(raw.data.file))
+  colnames(raw.data.file)[colnames(raw.data.file) == "trt"] <- "treatment"
+  colnames(raw.data.file)[colnames(raw.data.file) == "spp"] <- "kartez"
+  colnames(raw.data.file)[colnames(raw.data.file) == "species"] <- "kartez"
+  colnames(raw.data.file)[colnames(raw.data.file) == "comm"] <- "comments"
+  colnames(raw.data.file)[colnames(raw.data.file) == "trans"] <- "transect"
+
+  # Break loop if any "illegal" column names exist
+  if (any(!colnames(raw.data.file) %in% legal.col.names)) {
+    print(paste("A column name in file", raw.data.file$field.sheet.name[1], "needs to be corrected before continuing."))
+    break
+  }
+  
+  # Extract collection date from file name
+  raw.data.file$collection.date <- as.Date(paste(
+    field.file.name[2], # month
+    field.file.name[3], # day of month
+    substr(field.file.name[4], nchar(field.file.name[4])-1, nchar(field.file.name[4]))), # last two digits of year
+    format = "%m %d %y")
+  
+  # Extract three-letter collector initials from file name
+  raw.data.file$collector <- as.factor(substr(field.file.name[5],1,3))
+
+  # Fill in blank site, plot, and quad cells
+for (j in 1:nrow(raw.data.file)) {
+  if("site" %in% colnames(raw.data.file)) if (is.na(raw.data.file$site[j])) {
+    raw.data.file$site[j] <- raw.data.file$site[j-1]}
+  if("web" %in% colnames(raw.data.file)) if (is.na(raw.data.file$web[j])) {
+    raw.data.file$web[j] <- raw.data.file$web[j-1]}
+  if("plot" %in% colnames(raw.data.file)) if (is.na(raw.data.file$plot[j])) {
+    raw.data.file$plot[j] <- raw.data.file$plot[j-1]}
+  if("subplot" %in% colnames(raw.data.file)) if (is.na(raw.data.file$subplot[j])) {
+    raw.data.file$subplot[j] <- raw.data.file$subplot[j-1]}
+  if("transect" %in% colnames(raw.data.file)) if (is.na(raw.data.file$transect[j])) {
+    raw.data.file$transect[j] <- raw.data.file$transect[j-1]}
+  if("treatment" %in% colnames(raw.data.file)) if (is.na(raw.data.file$treatment[j])) {
+    raw.data.file$treatment[j] <- raw.data.file$treatment[j-1]}
+  if("quad" %in% colnames(raw.data.file)) if (is.na(raw.data.file$quad[j])) {
+    raw.data.file$quad[j] <- raw.data.file$quad[j-1]}
+  if("kartez" %in% colnames(raw.data.file)) if (is.na(raw.data.file$kartez[j])) {
+    raw.data.file$kartez[j] <- raw.data.file$kartez[j-1]}
+}
+  
+  # Merge all data files together
+  if (i == 1) raw.data <- raw.data.file
+  else raw.data <- join(raw.data, raw.data.file, by=intersect(colnames(raw.data), colnames(raw.data.file)), type="full")
+}
+
+
+# Add variables if they are not present in the data
+if ("web" %in% colnames(raw.data)) {
+  raw.data <- raw.data
+} else {
+  raw.data$web <- NA
+}
+
+if ("plot" %in% colnames(raw.data)) {
+  raw.data <- raw.data
+} else {
+  raw.data$plot <- NA
+}
+
+if ("subplot" %in% colnames(raw.data)) {
+  raw.data <- raw.data
+} else {
+  raw.data$subplot <- NA
+}
+
+if ("transect" %in% colnames(raw.data)) {
+  raw.data <- raw.data
+} else {
+  raw.data$transect <- NA
+}
+
+if ("treatment" %in% colnames(raw.data)) {
+  raw.data <- raw.data
+} else {
+  raw.data$treatment <- NA
+}
+
+rm(raw.data.file)
+```
+
+
+
+```{r historical, echo = F, cache=TRUE, message=FALSE}
+# Read in all-quad data file
+all.quads <- read_csv(all.quad.file, guess_max = 1000000)
+# format
+all.quads$kartez <- as.factor(toupper(all.quads$kartez))
+all.quads$cover[all.quads$cover < 0] <- NA
+all.quads$height[all.quads$height < 0] <- NA
+all.quads$date <- as.Date(all.quads$date, format = "%m/%d/%Y")
+
+# Read in a species list file
+master.species.list <- read_csv(master.species.list.file)
+```
+
+
+```{r quick fixes, echo = F}
+# There are some "errors" that can be fixed easily and without any special consideration.  
+
+# Capitalize site and species names
+# raw.data$site <- as.factor(toupper(raw.data$site))
+# raw.data$kartez <- as.factor(toupper(raw.data$kartez))
+# raw.data$treatment <- as.factor(toupper(raw.data$treatment))
+# raw.data$plot <- as.factor(toupper(raw.data$plot))
+# raw.data$subplot <- as.factor(toupper(raw.data$subplot))
+# raw.data$transect <- as.factor(toupper(raw.data$transect))
+
+# Capitalize site and species names
+# not all variable may be present in all daily data sets, but this will change them to upper if present
+if("site" %in% colnames(raw.data)) {raw.data$site <- as.factor(toupper(raw.data$site))}
+if("kartez" %in% colnames(raw.data)) {raw.data$kartez <- as.factor(toupper(raw.data$kartez))}
+if("treatment" %in% colnames(raw.data)) {raw.data$treatment <- as.factor(toupper(raw.data$treatment))}
+if("plot" %in% colnames(raw.data)) {raw.data$plot<- as.factor(toupper(raw.data$plot))}
+if("subplot" %in% colnames(raw.data)) {raw.data$subplot <- as.factor(toupper(raw.data$subplot))}
+if("transect" %in% colnames(raw.data)) {raw.data$transect <- as.factor(toupper(raw.data$transect))}
+
+
+# Fix some common site name mistakes
+raw.data$site <- as.factor(mapvalues(
+  as.character(raw.data$site), 
+  from = "FALSE", to = "F", warn_missing = F))
+raw.data$site <- as.factor(mapvalues(
+  as.character(raw.data$site), 
+  from = "FERT", to = "F", warn_missing = F))
+raw.data$site <- as.factor(mapvalues(
+  as.character(raw.data$site), 
+  from = "WARM", to = "W", warn_missing = F))
+raw.data$site <- as.factor(mapvalues(
+  as.character(raw.data$site), 
+  from = "WARMING", to = "W", warn_missing = F))
+raw.data$site <- as.factor(mapvalues(
+  as.character(raw.data$site), 
+  from = "PJ", to = "P", warn_missing = F))
+
+# Change treatment NA or "U" (unburned) to C (control)
+raw.data$treatment <- as.factor(mapvalues(
+  as.character(raw.data$treatment), 
+  from = c("U", NA), to = c("C", "C"), warn_missing = F))
+
+# Delete commas in comment column
+raw.data$field_comments <- gsub(x = raw.data$field_comments,
+                          pattern = ",",
+                          replacement = ".")
+
+
+```
+
+Initial summary and look at the values of the variables, if present in the data. Some files will not contain all variables that are possible.
+
+Summary:
+```{r, echo=FALSE}
+knitr::kable(str(raw.data))
+```
+site:
+```{r, echo=FALSE}
+# site
+table(as.factor(raw.data$site))
+```
+treatment:
+```{r, echo=FALSE}
+# treatment
+table(as.factor(raw.data$treatment))
+```
+quad:
+```{r, echo=FALSE}
+# quad
+table(as.factor(raw.data$quad))
+```
+kartez:
+```{r, echo=FALSE}
+# kartez
+table(as.factor(raw.data$kartez))
+```
+**obs:**  
+```{r, echo=FALSE}
+# obs
+# knitr::kable(table(as.factor(raw.data$obs)))
+knitr::kable(raw.data %>% group_by(obs) %>% summarize(count=n()), align = 'l')
+
+# cover
+knitr::kable(raw.data %>% group_by(cover) %>% summarize(count=n())) %>% kable_styling(position = 'left', full_width = F)
+```
+height:
+```{r, echo=FALSE}
+# height
+table(as.factor(raw.data$height))
+```
+count:
+```{r, echo=FALSE}
+# count
+table(as.factor(raw.data$count))
+```
+collection.date:
+```{r, echo=FALSE}
+# collection.date
+file.dates <- unique(raw.data$collection.date)
+if (file.dates != today()) {print(paste("HEY!: There are dates in the daily files that are not today's date"))}
+
+table(as.factor(raw.data$collection.date))
+```
+collector:
+```{r, echo=FALSE}
+# collector
+table(as.factor(raw.data$collector))
+```
+web:
+```{r, echo=FALSE}
+# web
+table(as.factor(raw.data$web))
+```
+plot:
+```{r, echo=FALSE}
+# plot
+table(as.factor(raw.data$plot))
+```
+subplot:
+```{r, echo=FALSE}
+# subplot
+table(as.factor(raw.data$subplot))
+```
+transect:
+```{r, echo=FALSE}
+# transect
+table(as.factor(raw.data$transect))
+```
+
+
+```{r write out initial raw file, echo = F}
+# Write out this new data file. 
+
+# Write out data file
+# write.out.file <- paste0(location_raw.data.sheets, "filled_raw_data", months(mean(raw.data$collection.date), abb=T), year(mean(raw.data$collection.date)), ".csv")
+write.out.file <- paste0(daily.output.file, "/filled_raw_data", today(), ".csv", sep = "")
+
+# print(write.out.file)
+write.csv(raw.data, write.out.file, quote = F, row.names = F)
+
+# USER: Will need to change to the correct directory path
+ # filled.data <- read.csv("C:/Users/sevuser/Desktop/UNM/2017 Data/NPP/after R/filled_raw_dataAug2017.csv", strip.white = T)
+filled.data <- read.csv(paste0(daily.output.file, "filled_raw_data", today(), ".csv", sep = ""), strip.white = T)
+
+#filled.data$collection.date <- as.Date(filled.data$collection.date, format = "%m/%d/%Y")
+# kmh change - filled.data reads back into R in %Y-%m-%d format
+filled.data$collection.date <- as.Date(filled.data$collection.date, format = "%Y-%m-%d")
+
+
+#filled.data <- read.csv(write.out.file, strip.white = T)
+
+#filled.data$collection.date <- as.Date(filled.data$collection.date)
+```
+
+
+
+### Error report
+
+Now we can search for real errors. These errors are not fixed within this script, but simply reported. They should be evaluated by hand and corrected in the raw data or the new file, if necessary.
+The first type of error to consider are possible typos. This code chunk will output a list of possible typos in the site, species, cover, and OTHER columns, by checking these values against a list of "legal" values that we provide.  
+Remember to check list of possible "quad codes"  
+
+```{r, echo = F, message = F}
+# Create data.frame with all site-treatment-web-plot-subplot-quad-transect combination
+all.quad.codes <- join_all(type = "full", dfs = list(
+# Fert has plots 1-20, with quads 1-4 for each plot
+siteF = expand.grid(site = "F", plot = as.factor(1:20), quad = 1:4),
+# Creosote core has webs 1-5, plots N, S, E, W for each web, and quads 1 and 3 for each plot
+siteC = expand.grid(site = "C", web = 1:5, plot = c("N", "S", "E", "W"), quad = c(1,3)),
+# Black grama core has webs 1 and 5, with plots N, S, E, W, NE for each web, and quads 1 and 3 for each plot
+# Black grama core also has web 4, with plots N, S, E, W, NW, NE for each web, and quads 1 and 3 for each plot
+siteG = rbind(expand.grid(site = "G", treatment = "C", web = c(1,5), plot = c("N", "S", "E", "W", "NE"), quad = c(1,3)), expand.grid(site = "G", treatment = "C", web = 4, plot = c("NW", "S", "E", "W", "NE"), quad = c(1,3))), 
+# Blue grama core has webs 1-5, plots N, S, E, W for each web, and quads 1 and 3 for each plot
+siteB = expand.grid(site = "B", web = 1:5, plot = c("N", "E", "W"), quad = c(1,3)),
+# burned black grama core has quads 1:15, 26:40 
+siteGB = expand.grid(site = "G", treatment = "B", quad = c(1:15,26:40)),
+# mixed grass has burned and unburned treatments has quads 1:15, 26:40 
+siteMG = expand.grid(site = "MG", treatment = c(NA, "B"), quad = c(1:15,26:40)),
+# burned mixed shrub has burned and unburned treatments with quads 1:40 
+siteMS = expand.grid(site = "MS", treatment = c(NA, "B"), quad = 1:40),
+# monsoon has plots 1-13, with subplots A, B for each plot, and quads 1-2 for each subplot 
+siteM = expand.grid(site = "M", plot = as.factor(1:13), subplot = c("A", "B"), quad = 1:2),
+# warming has plots 1-40, with quads 1-2 for each plot 
+siteW = expand.grid(site = "W", plot = as.factor(1:40), quad = 1:2),
+# pinyon juniper core has plots 1-2, with transects V, R, S, N for each plot, and quads 1-5 for each transect 
+# pinyon juniper core also has plot 3, with transects A, B, C, D, and quads 1-5 for each transect 
+siteP = rbind(expand.grid(site = "P", plot = as.factor(1:2), transect = c("V", "R", "S", "N"), quad = 1:10), expand.grid(site = "P", plot = as.factor(3), transect = c("A", "B", "C", "D"), quad = 1:5))))
+
+all.quad.codes$treatment[is.na(all.quad.codes$treatment)] <- "C"
+
+```
+
+```{r, echo = F}
+# Inconsistent collection dates
+# cat(" \n Inconsistent collection dates: \n")
+print(paste0("Inconsistent collection dates:"))
+errors <- unique(filled.data[is.na(filled.data$collection.date) | abs(as.numeric(filled.data$collection.date - mean(filled.data$collection.date, trim=0.1))) > 30, c("field.sheet.name", "site", "collection.date", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+# else cat("\n no errors found \n")}
+else print(paste0("no errors found"))}
+
+
+# Rows with missing data
+cat(" \n Rows with missing data: \n")
+errors <- unique(filled.data[is.na(filled.data$site) |
+                               is.na(filled.data$quad) |
+                               is.na(filled.data$kartez) |
+                               is.na(filled.data$cover) |
+                               is.na(filled.data$height) |
+                               is.na(filled.data$count) |
+                               is.na(filled.data$collection.date) |
+                               is.na(filled.data$collector), c("field.sheet.name", "site", "quad", "kartez", "cover", "height", "count", "collection.date", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+
+```
+
+```{r, echo = F}
+# Site-quad errors
+
+# Site names in the filled.data file that don't exist in the all.quads data file
+cat(" \n Site names in the filled.data file that don't exist in the all.quads data file: \n")
+errors <- unique(filled.data[!filled.data$site %in% all.quad.codes$site, c("field.sheet.name", "site", "collection.date", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+# Site-treatment combinations in the filled.data file that don't exist in the all.quads data file
+cat(" \n Site-treatment combinations in the filled.data file that don't exist in the all.quads data file: \n")
+errors <- unique(filled.data[!paste(filled.data$site, filled.data$treatment) %in% paste(all.quad.codes$site, all.quad.codes$treatment) ,c("field.sheet.name", "site", "treatment", "collection.date", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+# Site-treatment-web-plot-subplot-quad-transect-treatment combinations in the filled.data file that don't exist in the all.quads data file
+cat(" \n Site-web-plot-subplot-quad-transect combinations in the filled.data file that don't exist in the all.quads data file: \n")
+errors <- unique(filled.data[!paste(filled.data$site, filled.data$treatment, filled.data$web, filled.data$plot, filled.data$subplot, filled.data$transect, filled.data$quad) %in% paste(all.quad.codes$site, all.quad.codes$treatment, all.quad.codes$web, all.quad.codes$plot, all.quad.codes$subplot, all.quad.codes$transect, all.quad.codes$quad), c("field.sheet.name", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "collection.date", "collector")]) 
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+
+# Missing site-treatment-web-plot-subplot-transect-quad combinations in the filled.data file 
+# cat(" \n Missing site-treatment-web-plot-subplot-transect-quad combinations: \n")
+# errors <- unique(all.quad.codes[!paste(all.quad.codes$site, all.quad.codes$treatment, all.quad.codes$web, all.quad.codes$plot, all.quad.codes$subplot, all.quad.codes$transect, all.quad.codes$quad) %in% paste(filled.data$site, filled.data$treatment, filled.data$web, filled.data$plot, filled.data$subplot, filled.data$transect, filled.data$quad), c("site", "treatment", "web", "plot", "subplot", "transect", "quad")]) 
+# {if (nrow(errors) > 0) kable(errors, format = "pandoc")
+# else cat("\n no errors found \n")}
+
+
+# Duplicate observations of site-web-treatment-plot-subplot-transect-quad combinations in the filled.data file 
+# duplicates <- ddply(filled.data, c("site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez"), function(x) data.frame(
+#   num.collectors = length(unique(x$collector)),
+#   num.dates = length(unique(x$collection.date))))
+# duplicates <- duplicates[duplicates$num.collectors > 1 | duplicates$num.dates > 1,]
+# cat(" \n Duplicate site-web-treatment-plot-subplot-transect-quad observations: \n")
+# errors <- unique(filled.data[paste(filled.data$site, filled.data$treatment, filled.data$web, filled.data$plot, filled.data$subplot, filled.data$transect, filled.data$quad) %in% paste(duplicates$site, duplicates$treatment, duplicates$web, duplicates$plot, duplicates$subplot, duplicates$transect, duplicates$quad), c("field.sheet.name", "collection.date", "collector", "site", "treatment", "web", "plot", "subplot", "transect", "quad")]) 
+# {if (nrow(errors) > 0) kable(errors, format = "pandoc")
+# else cat("\n no errors found \n")}
+
+# KMH NOTE: Missing combos and duplicates will be added to another script that can be run once data for an entire site has been collected.
+
+```
+
+
+```{r find typos, echo = F}
+
+# Species names in the filled.data file that don't exist in the all.quads data file
+cat(" \n Species names in the filled.data file that don't exist in the all.quads data file: \n")
+errors <- unique(filled.data[!filled.data$kartez %in% all.quads$kartez, c("field.sheet.name", "site", "kartez", "collection.date", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+# Species names in the filled.data file that don't exist in the species file
+cat(" \n Species names in the filled.data file that don't exist in the species file: \n")
+errors <- unique(filled.data[!filled.data$kartez %in% master.species.list$kartez, c("field.sheet.name", "site", "kartez", "collection.date", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+# Cover values that are not in the allowed intervals
+cat(" \n Cover values that are not in the allowed intervals: \n")
+errors <- unique(filled.data[
+  (filled.data$cover > 30 &
+     filled.data$kartez %in% filled.data$kartez[filled.data$kartez %in% master.species.list$kartez[master.species.list$family == "Poaceae"]]) |
+    (filled.data$cover < 1 & !filled.data$cover %in% c(NA, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75)) | (is.na(filled.data$cover)),
+  c("field.sheet.name", "site", "kartez", "cover", "height", "collection.date", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+
+```
+
+
+
+
+
+
+
+Next, we can search for entries that are technically legal, but outside the bounds of observations commonly made. 
+Highly improbable:
+ -  species never before seen at that site
+ -  species cover or height outside of 3 s.d. seen at that site-season
+ -  individual measurements add up to a number very different from previous year
+```{r all_quads_history, echo=FALSE, cache=TRUE, dependson="historical"}
+# Calculate total cover values per quad per species for ALL PREVIOUS YEARS
+allyrs.quad.means <- ddply(all.quads[all.quads$season == (unique(semester(filled.data$collection.date)) + 1),], c("dataset", "year", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez"), function(x) data.frame(
+  allprev.sum.cover = sum(x$cover, na.rm=T),
+  allprev.mean.ind.height = mean(x$height, na.rm=T)))
+allyrs.quad.means <- ddply(allyrs.quad.means, c("dataset", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez"), function(x) data.frame(
+  prev.sum.cover = mean(unique(x$allprev.sum.cover[x$year >= (year(mean(filled.data$collection.date)) - 2)]), na.rm=T),
+  prev.mean.height = mean(unique(x$allprev.mean.ind.height[x$year >= (year(mean(filled.data$collection.date)) - 2)]), na.rm=T),
+  allprev.sum.cover = mean(x$allprev.sum.cover, na.rm=T),
+  allprev.sdsum.cover = sd(x$allprev.sum.cover, na.rm=T),
+  allprev.mean.height = mean(x$allprev.mean.ind.height, na.rm=T),
+  allprev.sd.height = sd(x$allprev.mean.ind.height, na.rm=T)))
+```
+ 
+
+```{r quad and site calculations, echo = F, message = F}
+# Calculate summary values per quad per species for THIS YEAR
+filled.data$count[is.na(filled.data$count)] <- 0
+quad.totals <- ddply(filled.data, c("field.sheet.name", "collector", "collection.date", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez"), function(x) data.frame(
+  sum.cover = sum(x$cover * x$count, na.rm=T), 
+  mean.ind.height = mean(rep(x$height, x$count), na.rm=T)))
+
+
+# Calculate average cover and heights per site per species
+site.sp.means <- ddply(all.quads[all.quads$season == (unique(semester(filled.data$collection.date)) + 1),], c("dataset", "site", "treatment", "kartez"), function(x) data.frame(
+  sp.mean.cover = mean(x$cover, na.rm=T),
+  sp.sd.cover = sd(x$cover, na.rm=T),
+  sp.mean.height = mean(x$height, na.rm=T),
+  sp.sd.height = sd(x$height, na.rm=T)))
+
+# Calculate total cover values per quad per species for PREVIOUS YEAR
+#prevyr.quad.means <- ddply(all.quads[all.quads$year == (year(mean(filled.data$collection.date)) - 1) & all.quads$season == (unique(semester(filled.data$collection.date)) + 1),], c("dataset", "year", "season", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez"), function(x) data.frame(
+#  prev.sum.cover = sum(x$cover, na.rm=T),
+#  prev.mean.ind.height = mean(x$height, na.rm=T)))
+
+# Calculate total cover values per quad per species for PREVIOUS TEN YEARS
+#allprev.quad.means <- ddply(all.quads[all.quads$year >= (year(mean(filled.data$collection.date)) - 10) & all.quads$season == (unique(semester(filled.data$collection.date)) + 1),], c("site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez"), function(x) data.frame(
+ # allprev.sum.cover = sum(x$cover, na.rm=T) / 10,
+#  allprev.mean.ind.height = mean(x$height, na.rm=T),
+#  allprev.sd.ind.height = sd(x$cover, na.rm=T)))
+
+# Calculate mean cover values per species per site for THIS YEAR
+#site.means <- ddply(quad.totals, c("field.sheet.name", "site", "treatment", "kartez", "collector", "collection.date"), function(x) data.frame(
+#  mean.site.sum.cover = sum(x$sum.cover, na.rm=T), 
+#  mean.site.cover = mean(x$mean.ind.cover, na.rm=T),
+#  mean.site.height = mean(x$mean.ind.height, na.rm=T)))
+
+# Calculate mean cover values per species per site for PREVIOUS TEN YEARS
+#prev.site.means <- ddply(all.quads[all.quads$year >= (unique(year(filled.data$collection.date)) - 10) & all.quads$season == (unique(semester(filled.data$collection.date)) + 1),], c("season", "site", "treatment", "kartez"), function(x) data.frame(
+#  prev.mean.site.cover = mean(x$cover, na.rm=T),
+#  prev.sd.site.cover = sd(x$cover, na.rm=T),
+#  prev.mean.site.height = mean(x$height, na.rm=T),
+#  prev.sd.site.height = sd(x$height, na.rm=T)))
+
+
+quad.compare <- join_all(type = "left", dfs=list(
+  quad.totals, allyrs.quad.means, site.sp.means))
+
+```
+
+
+```{r big changes in quad values, echo = F}
+# Cover values that add up to >100% per quad
+cat(" \n Cover values that add up to >100% per quad: \n")
+errors <- unique(quad.totals[quad.totals$sum.cover > 100, c("field.sheet.name", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez", "sum.cover", "collector")])
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+# Total cover values that are more than: 
+#  2sd from last season's total covers for that quad AND 
+#  3sd from the ten-year mean total cover for that quad
+cat(" \n Total cover values that changed a lot, per quad: \n")
+errors <- unique(quad.compare[
+  abs(quad.compare$sum.cover - quad.compare$prev.sum.cover) > quad.compare$allprev.sdsum.cover * 2 & 
+    abs(quad.compare$sum.cover - quad.compare$allprev.sum.cover) > quad.compare$allprev.sdsum.cover * 3, 
+  c("field.sheet.name", "collector", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez", "sum.cover", "prev.sum.cover", "allprev.sum.cover", "allprev.sdsum.cover")])
+errors <- errors %>% filter(!is.na(sum.cover) & !is.na(prev.sum.cover))
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+
+# Mean height values that are more than: 
+#  3sd from last season's mean heights for that quad AND 
+#  4sd from the ten-year mean height for that quad
+cat(" \n Mean heights that changed a lot, per quad: \n")
+errors <- unique(quad.compare[
+  abs(quad.compare$mean.ind.height - quad.compare$prev.mean.height) > quad.compare$allprev.sd.height * 3 & 
+    abs(quad.compare$mean.ind.height - quad.compare$allprev.mean.height) > quad.compare$allprev.sd.height * 4, 
+  c("field.sheet.name", "collector", "site", "treatment", "web", "plot", "subplot", "transect", "quad", "kartez", "mean.ind.height", "prev.mean.height", "allprev.mean.height", "allprev.sd.height")])
+errors <- errors %>% filter(!is.na(mean.ind.height) & !is.na(prev.mean.height))
+{if (nrow(errors) > 0) kable(errors, format = "pandoc")
+else cat("\n no errors found \n")}
+
+#filled.data[filled.data$site == "MG" & filled.data$treatment == "B" & filled.data$quad == 31 & filled.data$kartez == "BOER4",]
+
+#all.quads[all.quads$year == 2016 & all.quads$season == 3 & all.quads$site == "C" & all.quads$treatment == "C" & all.quads$web == 5 & all.quads$plot == "S" & all.quads$kartez == "LATR2",]
+
+
+```
+
+After you are finished running the daily report and second pass, remember to move today's daily files to the data_daily_archive directories.  If you want to save a copy of the daily report, open it in a web browser, right click on the body, select 'Save Page as...', add today's date to the file name, and save a copy to the project's output/report_archive directory.
