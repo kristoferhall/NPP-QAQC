@@ -6,21 +6,17 @@ output:
   pdf_document: default
 ---
 
-## Sevilleta NPP quality control - Daily data
-Date of report:
-```{r, echo=FALSE, warning=FALSE}
-# REPORT DATE:
-Sys.time()
-```
+## Sevilleta NPP quality control - Daily data  
 
-Report produced on: `r format(Sys.Date(), "%b %d, %Y")`  
-The working directory is: `r getwd()`
+This report was produced on: `r format(Sys.Date(), "%b %d, %Y")`  
+Your working directory is: `r getwd()`  
+
 
 ```{r, echo = FALSE}
 # Purpose of this script: This script reads in daily raw excel files from NPP quad observations in the field and outputs one filled, merged, and amended daily file, as well as a report on possible errors within that daily file. In addition to the raw observation files, it utilizes a file of all previous NPP observations made at the Sevilleta.  
 ```
 
-```{r load libraries convert files specify directories, message=F, warning=F, echo=F}
+```{r load libraries convert files specify directories, message=F, warning=F, echo=F} 
 # !!!INITIAL STEPS FOR USER: Make sure libraries are up to date, and that directory paths are correctly set.  I place "USER" in locations where the user may need to update information.
 
 # This initial code will not appear in the report output.  
@@ -56,6 +52,7 @@ for(i in location_xlsx.data.sheets) {
 }
 
 
+
 for(i in file.list){
 # filepath <- file.path("C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_daily/xlsx_format",paste(i,".xlsx",sep=""))
 # filepath <- file.path("/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_daily/xlsx_format",paste(i,".xlsx",sep=""))
@@ -78,19 +75,26 @@ rm(list=ls(all=TRUE))
 
 # USER: Where are the daily raw csv data files stored? Enter directory path to files.
 # location_raw.data.sheets <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_daily/csv_format"
-location_raw.data.sheets <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_daily/csv_format"
+location_raw.data.sheets <- "../data/data_daily/csv_format"
 
-# USER: Where is the large, all-quad data file stored? Enter directory path to file.
+# USER: Where is the large, historical data file stored? Enter directory path to file.
 # all.quad.file <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_other/AJ_AllQuads.csv"
-all.quad.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_other/AJ_AllQuads.csv"
+# all.quad.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_other/AJ_AllQuads.csv"
+# all.quad.file <- "../data/data_other/AJ_AllQuads.csv"
+
+# NOTE: Lauren provided a new file on 20190401 called NPP_quad_20190323.csv, and this should be used instead of AJ_AllQuads.csv.
+all.quad.file <- "../data/data_other/NPP_quad_20190323.csv"
+
 
 # USER: Where is the master species list stored? Enter directory path to files.
 # master.species.list.file <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/data/data_other/SevilletaSpeciesList_AJH.csv"
-master.species.list.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_other/SevilletaSpeciesList_AJH.csv"
+# master.species.list.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_other/SevilletaSpeciesList_AJH.csv"
+master.species.list.file <- "../data/data_other/SevilletaSpeciesList_AJH.csv"
 
 # USER: Where will you write the combined daily output file to?  Enter directory path.
 # daily.output.file <- "C:/Users/sevfi/Desktop/NPP_QAQC/NPP_QAQC/output/output_daily/"
-daily.output.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/output/output_daily/"
+# daily.output.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/output/output_daily/"
+daily.output.file <- "../output/output_daily/"
 
 ```
 
@@ -106,7 +110,7 @@ daily.output.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_Q
 raw.data.sheets <- list.files(location_raw.data.sheets, pattern = glob2rx("npp*csv"), full.names = T)
 
 # Define legal column names
-legal.col.names <- c("site", "treatment", "quad", "kartez", "obs", "cover", "height", "count", "comments", "field.sheet.name", "collection.date", "collector", "web", "plot", "subplot", "transect", "field_comments", "qaqc_comments")
+legal.col.names <- c("site", "treatment", "quad", "species", "obs", "cover", "height", "count", "field_sheet_name", "collection_date", "collector", "web", "plot", "subplot", "transect", "field_comments", "qaqc_comments")
 
 for (i in 1:length(raw.data.sheets)) {
   raw.data.file <- read.csv(raw.data.sheets[i], header = T, strip.white = T, na.strings = c("NA", ""))
@@ -117,25 +121,28 @@ for (i in 1:length(raw.data.sheets)) {
     raw.data.file <- subset(raw.data.file, select = -X) }
   
   # extract file name info
-  raw.data.file$field.sheet.name <- as.factor(list.files(location_raw.data.sheets, pattern=glob2rx("npp*csv"))[i])
+  raw.data.file$field_sheet_name <- as.factor(list.files(location_raw.data.sheets, pattern=glob2rx("npp*csv"))[i])
   field.file.name <- strsplit(list.files(location_raw.data.sheets, pattern = glob2rx("npp*csv"))[i], split = "[.]")[[1]]
   
   # make column names lowercase and check if they are legal
   colnames(raw.data.file) <- tolower(colnames(raw.data.file))
   colnames(raw.data.file)[colnames(raw.data.file) == "trt"] <- "treatment"
-  colnames(raw.data.file)[colnames(raw.data.file) == "spp"] <- "kartez"
-  colnames(raw.data.file)[colnames(raw.data.file) == "species"] <- "kartez"
-  colnames(raw.data.file)[colnames(raw.data.file) == "comm"] <- "comments"
+  # colnames(raw.data.file)[colnames(raw.data.file) == "spp"] <- "kartez"
+  colnames(raw.data.file)[colnames(raw.data.file) == "spp"] <- "species"
+  # colnames(raw.data.file)[colnames(raw.data.file) == "species"] <- "kartez"
+  colnames(raw.data.file)[colnames(raw.data.file) == "kartez"] <- "species"
+  # colnames(raw.data.file)[colnames(raw.data.file) == "comm"] <- "comments"
   colnames(raw.data.file)[colnames(raw.data.file) == "trans"] <- "transect"
 
   # Break loop if any "illegal" column names exist
   if (any(!colnames(raw.data.file) %in% legal.col.names)) {
-    print(paste("A column name in file", raw.data.file$field.sheet.name[1], "needs to be corrected before continuing."))
+    print(paste("A column name in file", raw.data.file$field_sheet_name[1], "needs to be corrected before continuing."))
+    print(paste0("The following are not legal names: ", colnames(raw.data.file)[!colnames(raw.data.file) %in% legal.col.names], sep = ""))
     break
   }
   
   # Extract collection date from file name
-  raw.data.file$collection.date <- as.Date(paste(
+  raw.data.file$collection_date <- as.Date(paste(
     field.file.name[2], # month
     field.file.name[3], # day of month
     substr(field.file.name[4], nchar(field.file.name[4])-1, nchar(field.file.name[4]))), # last two digits of year
@@ -160,13 +167,16 @@ for (j in 1:nrow(raw.data.file)) {
     raw.data.file$treatment[j] <- raw.data.file$treatment[j-1]}
   if("quad" %in% colnames(raw.data.file)) if (is.na(raw.data.file$quad[j])) {
     raw.data.file$quad[j] <- raw.data.file$quad[j-1]}
-  if("kartez" %in% colnames(raw.data.file)) if (is.na(raw.data.file$kartez[j])) {
-    raw.data.file$kartez[j] <- raw.data.file$kartez[j-1]}
+  # if("kartez" %in% colnames(raw.data.file)) if (is.na(raw.data.file$kartez[j])) {
+  #   raw.data.file$kartez[j] <- raw.data.file$kartez[j-1]}
+  if("species" %in% colnames(raw.data.file)) if (is.na(raw.data.file$species[j])) {
+    raw.data.file$species[j] <- raw.data.file$species[j-1]}
 }
   
   # Merge all data files together
   if (i == 1) raw.data <- raw.data.file
-  else raw.data <- join(raw.data, raw.data.file, by=intersect(colnames(raw.data), colnames(raw.data.file)), type="full")
+  else raw.data <- plyr::join(raw.data, raw.data.file, by=intersect(colnames(raw.data), colnames(raw.data.file)), type="full")
+  
 }
 
 
@@ -209,14 +219,34 @@ rm(raw.data.file)
 ```{r historical, echo = F, cache=TRUE, message=FALSE}
 # Read in all-quad data file
 all.quads <- read_csv(all.quad.file, guess_max = 1000000)
-# format
-all.quads$kartez <- as.factor(toupper(all.quads$kartez))
+
+# rename a few columns
+all.quads <- 
+  all.quads %>% 
+  dplyr::rename(Collection_Date = collection.date, Field_Sheet_Name = field.sheet.name, Collector = collector)
+
+
+colnames(all.quads) <- tolower(colnames(all.quads))
+
+# format some columns
+all.quads$year <- as.character(all.quads$year)
+all.quads$season <- as.character(all.quads$season)
+all.quads$collection_date <- as.Date(all.quads$collection_date, format = "%m/%d/%Y")
+all.quads$site <- str_to_lower(all.quads$site)    # NEED TO REMEMBER TO CHANGE BACK A FEW SITE NAMES with mixed case later in program after checks are run (EDGE_black, etc. - see cheatsheet)
+all.quads$treatment <- str_to_upper(all.quads$treatment)
+all.quads$web <- as.character(all.quads$web)
+all.quads$block <- as.character(all.quads$block)
+all.quads$quad <- as.character(all.quads$quad)
+
 all.quads$cover[all.quads$cover < 0] <- NA
 all.quads$height[all.quads$height < 0] <- NA
-all.quads$date <- as.Date(all.quads$date, format = "%m/%d/%Y")
+
+str(all.quads)
+
 
 # Read in a species list file
 master.species.list <- read_csv(master.species.list.file)
+
 ```
 
 
@@ -234,7 +264,7 @@ master.species.list <- read_csv(master.species.list.file)
 # Capitalize site and species names
 # not all variable may be present in all daily data sets, but this will change them to upper if present
 if("site" %in% colnames(raw.data)) {raw.data$site <- as.factor(toupper(raw.data$site))}
-if("kartez" %in% colnames(raw.data)) {raw.data$kartez <- as.factor(toupper(raw.data$kartez))}
+if("species" %in% colnames(raw.data)) {raw.data$species <- as.factor(toupper(raw.data$species))}
 if("treatment" %in% colnames(raw.data)) {raw.data$treatment <- as.factor(toupper(raw.data$treatment))}
 if("plot" %in% colnames(raw.data)) {raw.data$plot<- as.factor(toupper(raw.data$plot))}
 if("subplot" %in% colnames(raw.data)) {raw.data$subplot <- as.factor(toupper(raw.data$subplot))}
@@ -352,6 +382,8 @@ table(as.factor(raw.data$transect))
 
 
 ```{r write out initial raw file, echo = F}
+# TODO: NEED TO FIGURE OUT WHAT IS GOING ON HERE.........
+
 # Write out this new data file. 
 
 # Write out data file
@@ -393,7 +425,7 @@ siteC = expand.grid(site = "C", web = 1:5, plot = c("N", "S", "E", "W"), quad = 
 # Black grama core has webs 1 and 5, with plots N, S, E, W, NE for each web, and quads 1 and 3 for each plot
 # Black grama core also has web 4, with plots N, S, E, W, NW, NE for each web, and quads 1 and 3 for each plot
 siteG = rbind(expand.grid(site = "G", treatment = "C", web = c(1,5), plot = c("N", "S", "E", "W", "NE"), quad = c(1,3)), expand.grid(site = "G", treatment = "C", web = 4, plot = c("NW", "S", "E", "W", "NE"), quad = c(1,3))), 
-# Blue grama core has webs 1-5, plots N, S, E, W for each web, and quads 1 and 3 for each plot
+# Blue grama core has webs 1-5, plots N, E, W for each web, and quads 1 and 3 for each plot
 siteB = expand.grid(site = "B", web = 1:5, plot = c("N", "E", "W"), quad = c(1,3)),
 # burned black grama core has quads 1:15, 26:40 
 siteGB = expand.grid(site = "G", treatment = "B", quad = c(1:15,26:40)),
