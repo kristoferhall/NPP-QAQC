@@ -8,7 +8,7 @@
 
 library(tidyverse)
 library(lubridate)
-library(plyr)
+# library(plyr)
 
 
 # load AJ_AllQuads.csv as tibble (read_csv) versus read.csv
@@ -67,6 +67,13 @@ all.quad.codes <- join_all(type = "full", dfs = list(
   siteP = rbind(expand.grid(site = "P", plot = as.factor(1:2), transect = c("V", "R", "S", "N"), quad = 1:10), expand.grid(site = "P", plot = as.factor(3), transect = c("A", "B", "C", "D"), quad = 1:5))))
 
 all.quad.codes$treatment[is.na(all.quad.codes$treatment)] <- "C"
+
+aqc_site_trt_combos <-
+  all.quad.codes %>% 
+  dplyr::count(site, treatment)
+# TODO: Figure out better rules for filling in treatment with "C".  Checks of site-treatment will only be looking at 
+# "C" and "B".  NAs for sites shouldn't necessarily be filled in with "C" because this is incorrect treatment for many 
+# sites.  Or, I need to better understand how data is being processed.  
 
 
 # need to format variables before trying to join
@@ -136,17 +143,126 @@ nrow(aq_new)
 nrow(aq)
 
 
-# Can't get aq_new$Collection_Date to parse as a date.  What is wrong with this field?
-aq_new_bad_date <- 
-  aq_new %>%
-  count(Collection_Date) %>% 
-  arrange(Collection_Date)
 
-aq_new$Collection_Date <- as.Date(aq_new$Collection_Date, format = "%Y-%m-%d")
+
+aq_new$Collection_Date <- as.Date(aq_new$Collection_Date, format = "%d/%m/%Y")
 
 str(aq_new)
 
 
+
+
+
+# Look at species list ----
+master.species.list.file <- "/Users/kris/Documents/SEV/NPP/NPP_QAQC_revision_2019/NPP_QAQC/data/data_other/SevilletaSpeciesList_AJH.csv"
+
+master.species.list <- read_csv(master.species.list.file)
+
+species_list_grass_flag <- 
+  master.species.list %>% 
+  select(kartez, g_f) %>% 
+  dplyr::rename(species = kartez)
+
+
+
+
+
+# Look at differences between AJ_AllQuads and NPP_quad_20190323 ----
+dim(aq)
+dim(aq_new)
+
+names(aq)
+names(aq_new)
+
+str(aq)
+str(aq_new)
+
+aq %>% 
+  summarize(Earliest_date = min(date, na.rm = TRUE),
+            Latest_date   = max(date, na.rm = TRUE))
+
+aq_new %>% 
+  summarize(Earliest_date = min(Collection_Date, na.rm = TRUE),
+            Latest_date   = max(Collection_Date, na.rm = TRUE))
+
+
+# TODO: 
+# Will want to make sure metadata lists 1/10/1999 as the earliest collection date instead of the previously earliest
+# collection date of 2/2/1999.
+
+
+test_plot <-
+  aq_new %>% 
+  filter(Collection_Date == "2018-10-05" & Site == "grassland_burn" & Treatment == "B" & Quad == "1")
+
+test_plot %>% 
+  summarize(Total_Cover = sum(Cover * Count))
+
+aq_new2 <- 
+  aq_new %>% 
+  mutate(Cover1 = Cover * Count)
+
+cover_totals <- 
+  aq_new2 %>% 
+  dplyr::group_by(Year, Season, Collection_Date, Site, Treatment, Transect, Web, Block, Plot, Subplot, Quad) %>% 
+  dplyr::summarize(Total_Cover = sum(Cover1, na.rm = TRUE))
+summary(cover_totals$Total_Cover)
+
+cover_totals_bad <- 
+  cover_totals %>% 
+  filter(Total_Cover > 100.00) %>% 
+  dplyr::arrange(Site, Treatment, Web, Block, Plot, Subplot, Quad, Collection_Date)
+
+View(cover_totals_bad %>% ungroup() %>% 
+  dplyr::select("Site") %>% 
+  unique())
+
+# look at a couple of examples where cover has been > 100% on multiple occasions
+tst <- 
+  aq_new %>% 
+  filter(Site == "core_blue" & Treatment == "C" & Web == "1" & Plot == "E" & Quad == "1")
+
+tst_cover <- 
+  tst %>% 
+  group_by(Year, Season, Collection_Date, Site, Treatment, Web, Block, Plot, Subplot, Quad) %>% 
+  summarize(Total_Cover = sum(Cover * Count, na.rm = TRUE)) %>% 
+  arrange(Year, Season)
+# NOTE: There are some pretty crazy shifts in total_cover in this example.  Is that typical?
+
+
+tst2 <- 
+  aq_new %>% 
+  filter(Site == "core_creosote" & Treatment == "C" & Web == "4" & Plot == "W" & Quad == "3")
+
+tst2_cover <- 
+  tst2 %>% 
+  group_by(Year, Season, Collection_Date, Site, Treatment, Web, Block, Plot, Subplot, Quad) %>% 
+  summarize(Total_Cover = sum(Cover * Count, na.rm = TRUE)) %>% 
+  arrange(Year, Season)
+# NOTE: There are some pretty crazy shifts in total_cover in this example.  Is that typical?
+
+
+
+
+
+# Need to figure out what treatments are appropriate ----
+site_trt_combos <-
+  aq_new %>% 
+  count(Site, Treatment)
+# TODO: Need to figure out the proper Treatment combinations to be checking on.  Otherwise, it won't be possible
+# to do Site-treatment checks.
+# Possible that data has been processed wrong, given that NAs replaced with "C"
+
+
+# let's look at the most recent year of data for Site-Treatment
+aq18_new <-
+  aq_new %>% 
+  filter(Year >= "2018")
+
+site_trt_combos18 <- 
+  aq18_new %>% 
+  count(Site, Treatment)
+# Same deal.  Lots of Treatments.  
 
 
 

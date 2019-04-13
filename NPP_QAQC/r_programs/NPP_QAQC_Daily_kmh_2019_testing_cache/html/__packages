@@ -4,6 +4,7 @@ lubridate
 plyr
 reshape2
 knitr
+kableExtra
 markdown
 tidyr
 tidyverse
